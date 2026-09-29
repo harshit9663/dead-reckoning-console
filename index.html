@@ -1,391 +1,160 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Autonomous Mission Console | Team Visionaries</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Autonomous Navigation Console</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body, html { width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #fff; }
+    
+    /* Top Bar */
+    #topbar {
+      position: absolute; top: 0; left: 0; right: 0; height: 50px;
+      background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(8px);
+      z-index: 1000; display: flex; align-items: center; justify-content: space-between;
+      padding: 0 12px; border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .title-box h1 { font-size: 13px; font-weight: 700; color: #38bdf8; }
+    .title-box p { font-size: 10px; color: #94a3b8; }
+    .status-badge {
+      font-size: 11px; padding: 4px 8px; border-radius: 6px; font-weight: 600;
+      background: #065f46; color: #34d399; border: 1px solid #059669;
+    }
 
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        body { background-color: #0f172a; color: #f8fafc; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    /* Map container */
+    #map { width: 100%; height: 100%; z-index: 1; }
 
-        header {
-            padding: 10px 20px;
-            background: #1e293b;
-            border-bottom: 1px solid #334155;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .header-title h1 { font-size: 1.25rem; color: #38bdf8; }
-        .header-title p { font-size: 0.8rem; color: #94a3b8; }
-
-        #status-banner {
-            padding: 8px 16px;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            font-weight: 700;
-            background: #065f46;
-            color: #34d399;
-            border: 1px solid #059669;
-            transition: all 0.3s ease;
-        }
-        #status-banner.lost {
-            background: #7f1d1d;
-            color: #f87171;
-            border-color: #dc2626;
-            animation: pulse 1.5s infinite;
-        }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
-
-        .workspace { display: flex; flex: 1; height: calc(100vh - 65px); position: relative; }
-        #map-container { width: 75%; height: 100%; position: relative; }
-        #map { width: 100%; height: 100%; }
-
-        /* Floating Alert Card */
-        #failover-toast {
-            position: absolute;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%) translateY(-100px);
-            z-index: 2000;
-            background: rgba(127, 29, 29, 0.95);
-            border: 2px solid #ef4444;
-            color: #ffffff;
-            padding: 14px 24px;
-            border-radius: 10px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            font-weight: 600;
-            font-size: 0.95rem;
-            opacity: 0;
-            transition: all 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
-            pointer-events: none;
-        }
-        #failover-toast.show {
-            transform: translateX(-50%) translateY(0);
-            opacity: 1;
-        }
-        #failover-toast.restore {
-            background: rgba(6, 95, 70, 0.95);
-            border-color: #10b981;
-        }
-
-        .telemetry-panel {
-            width: 25%;
-            background: #1e293b;
-            border-left: 1px solid #334155;
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 14px;
-            overflow-y: auto;
-        }
-        .card { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 12px; }
-        .card h3 { font-size: 0.82rem; color: #94a3b8; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
-        .metric { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
-        .metric-label { font-size: 0.8rem; color: #cbd5e1; }
-        .metric-val { font-family: monospace; font-size: 0.95rem; font-weight: 700; color: #38bdf8; }
-        .metric-val.drift { color: #f87171; }
-        .metric-val.corrected { color: #4ade80; }
-
-        .modal-overlay {
-            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0, 0, 0, 0.85); display: flex; justify-content: center; align-items: center; z-index: 9999;
-        }
-        .modal-box {
-            background: #1e293b; border: 1px solid #38bdf8; border-radius: 12px;
-            padding: 26px; max-width: 480px; width: 90%; text-align: center;
-        }
-        .modal-box h2 { color: #38bdf8; margin-bottom: 10px; }
-        .modal-box p { font-size: 0.9rem; color: #cbd5e1; margin-bottom: 18px; line-height: 1.5; }
-        .btn-launch {
-            background: #0284c7; color: white; border: none; padding: 12px; width: 100%;
-            border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 0.95rem;
-        }
-        .btn-launch:hover { background: #0369a1; }
-    </style>
+    /* Bottom Floating Drawer for Mobile */
+    #bottom-panel {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px);
+      border-top: 1px solid rgba(255,255,255,0.15); border-radius: 16px 16px 0 0;
+      padding: 12px; z-index: 1000; max-height: 40vh; overflow-y: auto;
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+    }
+    .panel-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    }
+    .metric-card {
+      background: rgba(30, 41, 59, 0.7); padding: 8px; border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .metric-card label { font-size: 10px; color: #94a3b8; display: block; text-transform: uppercase; }
+    .metric-card span { font-size: 13px; font-weight: 600; color: #f8fafc; }
+    
+    .btn-action {
+      width: 100%; margin-top: 10px; padding: 10px; font-size: 12px; font-weight: 600;
+      border-radius: 8px; border: none; background: #dc2626; color: white; cursor: pointer;
+    }
+  </style>
 </head>
 <body>
 
-    <div id="welcome-modal" class="modal-overlay">
-        <div class="modal-box">
-            <h2>✨ Welcome Mission Control</h2>
-            <p>Smart India Hackathon Prototype: Autonomous Dead Reckoning Console.</p>
-            <button class="btn-launch" onclick="startSystem()">🚀 Lock Live Location & Launch</button>
-        </div>
+  <div id="topbar">
+    <div class="title-box">
+      <h1>Autonomous Navigation</h1>
+      <p>Hybrid GNSS & AI Dead Reckoning</p>
     </div>
+    <div id="statusBadge" class="status-badge">LOCKING SATELLITES...</div>
+  </div>
 
-    <div id="failover-toast">
-        <span style="font-size: 1.4rem;">⚠️</span>
-        <div id="toast-message">FAILOVER TRIGGERED: Switched to AI Dead Reckoning!</div>
+  <div id="map"></div>
+
+  <div id="bottom-panel">
+    <div class="panel-grid">
+      <div class="metric-card">
+        <label>Nav Source</label>
+        <span id="navSource" style="color: #38bdf8;">GNSS (Live)</span>
+      </div>
+      <div class="metric-card">
+        <label>Drift Error</label>
+        <span id="driftError">0.00 m</span>
+      </div>
+      <div class="metric-card">
+        <label>Corrected Heading</label>
+        <span id="headingVal">0.00°</span>
+      </div>
+      <div class="metric-card">
+        <label>AI Bias Filter</label>
+        <span id="biasVal">0.000</span>
+      </div>
     </div>
+    <button id="toggleGpsBtn" class="btn-action" onclick="toggleGPS()">Simulate GPS Loss</button>
+  </div>
 
-    <header>
-        <div class="header-title">
-            <h1>🧭 Autonomous Navigation Ground Station</h1>
-            <p>Team Visionaries | Hybrid GNSS & AI Inertial Dead Reckoning</p>
-        </div>
-        <div id="status-banner">LOCKING SATELLITES...</div>
-    </header>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    let map = L.map('map', { zoomControl: false }).setView([25.18, 75.83], 16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    <div class="workspace">
-        <div id="map-container">
-            <div id="map"></div>
-        </div>
+    let vehicleMarker = L.circleMarker([25.18, 75.83], {
+      radius: 9, fillColor: '#38bdf8', color: '#fff', weight: 2, fillOpacity: 1
+    }).addTo(map);
 
-        <div class="telemetry-panel">
-            <div class="card">
-                <h3>System & Link State</h3>
-                <div class="metric">
-                    <span class="metric-label">Python Backend:</span>
-                    <span id="backend-status" class="metric-val" style="color: #4ade80;">Checking...</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">Navigation Source:</span>
-                    <span id="sys-mode" class="metric-val">Initializing</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">Motion State:</span>
-                    <span id="motion-state" class="metric-val" style="color: #cbd5e1;">Stationary</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">GPS Precision:</span>
-                    <span id="gps-quality" class="metric-val">--</span>
-                </div>
-            </div>
+    let gpsActive = true;
+    let currentLat = 25.18, currentLon = 75.83;
 
-            <div class="card">
-                <h3>Raw IMU Telemetry (Sent)</h3>
-                <div class="metric">
-                    <span class="metric-label">Ax (Accel):</span>
-                    <span id="acc-x" class="metric-val">0.00 m/s²</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">ωz (Gyro):</span>
-                    <span id="gyro-z" class="metric-val drift">0.0000 rad/s</span>
-                </div>
-            </div>
+    function toggleGPS() {
+      gpsActive = !gpsActive;
+      const btn = document.getElementById("toggleGpsBtn");
+      const badge = document.getElementById("statusBadge");
+      const src = document.getElementById("navSource");
 
-            <div class="card">
-                <h3>Python AI Calibration</h3>
-                <div class="metric">
-                    <span class="metric-label">Predicted Bias:</span>
-                    <span id="pred-bias" class="metric-val drift">0.0000 rad/s</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">Filtered ωz:</span>
-                    <span id="corrected-gyro" class="metric-val corrected">0.0000 rad/s</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">Drift Error:</span>
-                    <span id="error-accum" class="metric-val">0.0 m</span>
-                </div>
-            </div>
+      if (!gpsActive) {
+        btn.innerText = "Restore GNSS Lock";
+        btn.style.background = "#059669";
+        badge.innerText = "GPS DENIED | AI DRIVING";
+        badge.style.background = "#7f1d1d";
+        badge.style.color = "#fca5a5";
+        src.innerText = "Dead Reckoning";
+        src.style.color = "#f87171";
+      } else {
+        btn.innerText = "Simulate GPS Loss";
+        btn.style.background = "#dc2626";
+        badge.innerText = "GNSS LOCKED";
+        badge.style.background = "#065f46";
+        badge.style.color = "#34d399";
+        src.innerText = "GNSS (Live)";
+        src.style.color = "#38bdf8";
+      }
+    }
 
-            <div class="card">
-                <h3>Active Coordinates</h3>
-                <div class="metric">
-                    <span class="metric-label">Lat:</span>
-                    <span id="lat-display" class="metric-val">--</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">Lon:</span>
-                    <span id="lon-display" class="metric-val">--</span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-    <script>
-        let map, vehicleMarker, gpsPolyline, aiPolyline;
-        let currentPos = null;
-        let lastReceivedPos = null;
-        let gpsPolyHistory = [], aiPolyHistory = [];
-
-        let lastGpsTimestamp = 0;
-        let previousMode = null;
-        let isFirstLock = true;
-
-        function triggerScreenAlert(type, message) {
-            const toast = document.getElementById('failover-toast');
-            const toastMsg = document.getElementById('toast-message');
-            
-            toastMsg.innerText = message;
-            if (type === 'lost') {
-                toast.className = 'show';
-            } else {
-                toast.className = 'show restore';
-            }
-
-            setTimeout(() => {
-                toast.classList.remove('show');
-            }, 4500);
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition((pos) => {
+        if (gpsActive) {
+          currentLat = pos.coords.latitude;
+          currentLon = pos.coords.longitude;
+          vehicleMarker.setLatLng([currentLat, currentLon]);
+          map.panTo([currentLat, currentLon]);
+          document.getElementById("statusBadge").innerText = "GNSS LOCKED";
         }
+      }, (err) => console.warn(err), { enableHighAccuracy: true });
+    }
 
-        function startSystem() {
-            document.getElementById('welcome-modal').style.display = 'none';
-            initMap();
+    setInterval(() => {
+      fetch("/process-telemetry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lat: currentLat, lon: currentLon, gyro: 0.05, gps_valid: gpsActive
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === "success") {
+          document.getElementById("driftError").innerText = data.drift_error_meters + " m";
+          document.getElementById("biasVal").innerText = data.predicted_bias;
+          if (!gpsActive) {
+            currentLat = data.ai_lat;
+            currentLon = data.ai_lon;
+            vehicleMarker.setLatLng([currentLat, currentLon]);
+            map.panTo([currentLat, currentLon]);
+          }
         }
-
-        function initMap() {
-            map = L.map('map').setView([20.5937, 78.9629], 5);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-
-            gpsPolyline = L.polyline([], {color: '#22c55e', weight: 4}).addTo(map);
-            aiPolyline = L.polyline([], {color: '#38bdf8', weight: 4, dashArray: '5, 5'}).addTo(map);
-
-            // Real Hardware GPS Watcher
-            if (navigator.geolocation) {
-                navigator.geolocation.watchPosition(
-                    (pos) => {
-                        const newLat = pos.coords.latitude;
-                        const newLon = pos.coords.longitude;
-                        lastGpsTimestamp = Date.now();
-
-                        // Initial Center
-                        if (isFirstLock) {
-                            currentPos = [newLat, newLon];
-                            lastReceivedPos = [newLat, newLon];
-                            map.setView(currentPos, 18);
-                            vehicleMarker = L.circleMarker(currentPos, {
-                                radius: 8, fillColor: "#22c55e", color: "#ffffff", weight: 2, fillOpacity: 1
-                            }).addTo(map);
-                            isFirstLock = false;
-                        }
-
-                        // Jitter filter: Only update position if movement is greater than 3 meters
-                        const distMoved = getDistanceInMeters(lastReceivedPos[0], lastReceivedPos[1], newLat, newLon);
-                        if (distMoved > 3.0) {
-                            currentPos = [newLat, newLon];
-                            lastReceivedPos = [newLat, newLon];
-                            document.getElementById('motion-state').innerText = "Moving (" + (pos.coords.speed ? pos.coords.speed.toFixed(1) : "0.8") + " m/s)";
-                            document.getElementById('motion-state').style.color = "#38bdf8";
-                        } else {
-                            document.getElementById('motion-state').innerText = "Stationary (Locked)";
-                            document.getElementById('motion-state').style.color = "#4ade80";
-                        }
-
-                        document.getElementById('gps-quality').innerText = `±${Math.round(pos.coords.accuracy)}m`;
-                    },
-                    (err) => {
-                        document.getElementById('gps-quality').innerText = "Signal Denied";
-                    },
-                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 1000 }
-                );
-            }
-
-            startContinuousSync();
-        }
-
-        // Haversine formula to filter out GPS stationary noise
-        function getDistanceInMeters(lat1, lon1, lat2, lon2) {
-            const R = 6371e3;
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLon = (lon2 - lon1) * Math.PI / 180;
-            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                      Math.sin(dLon/2) * Math.sin(dLon/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            return R * c;
-        }
-
-        function startContinuousSync() {
-            setInterval(async () => {
-                if (!currentPos) return;
-
-                const timeSinceLastGps = Date.now() - lastGpsTimestamp;
-                const gpsValid = (lastGpsTimestamp > 0) && (timeSinceLastGps < 4000);
-
-                const banner = document.getElementById('status-banner');
-                const sysMode = document.getElementById('sys-mode');
-
-                if (gpsValid) {
-                    if (previousMode === 'dr') {
-                        triggerScreenAlert('restore', "🟢 GNSS RESTORED: Satellite Signal Locked!");
-                    }
-                    previousMode = 'gps';
-
-                    banner.innerText = "🟢 PRIMARY: GNSS SATELLITE LOCKED";
-                    banner.className = "";
-                    sysMode.innerText = "GNSS Satellite";
-                    sysMode.style.color = "#4ade80";
-                    if (vehicleMarker) vehicleMarker.setStyle({ fillColor: "#22c55e" });
-                } else {
-                    if (previousMode === 'gps') {
-                        triggerScreenAlert('lost', "🚨 GPS LOST: Failover Activated! AI Dead Reckoning in control!");
-                        L.marker(currentPos).addTo(map).bindPopup("🚨 GPS Lost Location").openPopup();
-                    }
-                    previousMode = 'dr';
-
-                    banner.innerText = "🚨 AUTO-FAILOVER: AI DEAD RECKONING ACTIVE";
-                    banner.className = "lost";
-                    sysMode.innerText = "AI Dead Reckoning";
-                    sysMode.style.color = "#38bdf8";
-                    if (vehicleMarker) vehicleMarker.setStyle({ fillColor: "#38bdf8" });
-                }
-
-                // Clean sensor reading (0 when stationary)
-                const isMoving = document.getElementById('motion-state').innerText.includes("Moving");
-                const rawGyro = isMoving ? (gpsValid ? 0.015 : 0.085) : 0.0000;
-                const rawAccel = isMoving ? 1.15 : 0.00;
-
-                try {
-                    // Port 8080 link
-                    const res = await fetch("http://127.0.0.1:8080/process-telemetry", {
-                        method: "POST",
-                        headers: { 
-                            "Content-Type": "application/json",
-                            "Accept": "application/json"
-                        },
-                        body: JSON.stringify({
-                            lat: currentPos[0],
-                            lon: currentPos[1],
-                            gyro: rawGyro,
-                            gps_valid: gpsValid
-                        })
-                    });
-
-                    const data = await res.json();
-
-                    document.getElementById('backend-status').innerText = "Online";
-                    document.getElementById('backend-status').style.color = "#4ade80";
-                    document.getElementById('acc-x').innerText = rawAccel.toFixed(2) + " m/s²";
-                    document.getElementById('gyro-z').innerText = rawGyro.toFixed(4) + " rad/s";
-                    document.getElementById('pred-bias').innerText = "+" + data.predicted_bias.toFixed(4) + " rad/s";
-                    document.getElementById('corrected-gyro').innerText = data.corrected_gyro.toFixed(4) + " rad/s";
-                    document.getElementById('lat-display').innerText = data.ai_lat.toFixed(6);
-                    document.getElementById('lon-display').innerText = data.ai_lon.toFixed(6);
-                    document.getElementById('error-accum').innerText = isMoving ? data.drift_error_meters + " m" : "0.0 m";
-
-                    const activeCoords = [data.ai_lat, data.ai_lon];
-                    if (vehicleMarker) {
-                        vehicleMarker.setLatLng(activeCoords);
-                    }
-
-                    if (gpsValid) {
-                        if (isMoving) {
-                            gpsPolyHistory.push(activeCoords);
-                            gpsPolyline.setLatLngs(gpsPolyHistory);
-                        }
-                    } else {
-                        if (isMoving) {
-                            aiPolyHistory.push(activeCoords);
-                            aiPolyline.setLatLngs(aiPolyHistory);
-                        }
-                    }
-
-                } catch (e) {
-                    document.getElementById('backend-status').innerText = "Disconnected";
-                    document.getElementById('backend-status').style.color = "#f87171";
-                }
-            }, 1000);
-        }
-    </script>
+      }).catch(e => console.error(e));
+    }, 1000);
+  </script>
 </body>
 </html>
